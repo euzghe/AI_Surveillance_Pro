@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Özge AI | Havalimanı Güvenlik Paneli</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --main-bg: #0f172a; --card-bg: #1e293b; --accent: #38bdf8; --danger: #ef4444; --success: #22c55e; --warning: #eab308; }
+        body { background-color: var(--main-bg); color: #f1f5f9; font-family: 'Inter', sans-serif; }
+        .navbar { background: var(--card-bg); border-bottom: 1px solid #334155; }
+        .live-stream { border: 2px solid var(--accent); border-radius: 12px; box-shadow: 0 0 20px rgba(56, 189, 248, 0.2); width: 100%; height: auto; }
+        .log-card { background: var(--card-bg); border: 1px solid #334155; border-radius: 10px; transition: 0.3s; margin-bottom: 15px; animation: fadeIn 0.5s ease; }
+        .log-card:hover { transform: scale(1.02); border-color: var(--accent); cursor: pointer; }
+        .violation-img { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid #475569; }
+        .stat-card { background: var(--card-bg); border-radius: 12px; border-left: 5px solid var(--accent); padding: 15px; transition: 0.3s; }
+        .badge-id { background: var(--accent); color: var(--main-bg); font-weight: bold; }
+        .timestamp { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #94a3b8; }
+        #logs-container { height: 60vh; overflow-y: auto; padding-right: 10px; }
+        #logs-container::-webkit-scrollbar { width: 6px; }
+        #logs-container::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark mb-4">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1">🛡️ ÖZGE <span style="color: var(--accent)">AI SURVEILLANCE</span> <small class="fs-6 text-muted">Havalimanı Modu</small></span>
+        <div class="d-flex align-items-center">
+            <div id="status-spinner" class="spinner-grow text-danger spinner-grow-sm me-2" role="status"></div>
+            <span id="status-text" class="text-danger fw-bold small">CANLI ANALİZ AKTİF</span>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <div class="row">
+        <div class="col-lg-7 mb-4">
+            <div class="p-3 bg-dark rounded-4 shadow mb-4">
+                <h5 class="mb-3 text-info fw-bold d-flex justify-content-between">
+                    <span>🎥 CANLI GİRİŞ TAKİBİ</span>
+                    <span id="camera-status" class="badge bg-success small">Bağlı</span>
+                </h5>
+                <img src="http://127.0.0.1:8000/video_feed" class="live-stream" onerror="handleCameraError(this)">
+            </div>
+
+            <div class="row g-3">
+    <div class="col-md-4">
+        <div class="stat-card" style="border-left-color: var(--accent); background: #24344d;">
+            <small class="text-white-50 d-block text-uppercase fw-bold mb-1" style="letter-spacing: 1px;">Toplam Geçiş</small>
+            <h2 id="stat-total" class="fw-bold mb-0 text-white" style="font-size: 2.5rem;">0</h2>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card" style="border-left-color: var(--warning); background: #2d2a1e;">
+            <small class="text-white-50 d-block text-uppercase fw-bold mb-1" style="letter-spacing: 1px;">Tespit Edilen Kişi</small>
+            <h2 id="stat-person" class="fw-bold mb-0 text-white" style="font-size: 2.5rem;">0</h2>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card" style="border-left-color: var(--success); background: #1e2d24;">
+            <small class="text-white-50 d-block text-uppercase fw-bold mb-1" style="letter-spacing: 1px;">Şüpheli Nesne</small>
+            <h2 id="stat-object" class="fw-bold mb-0 text-white" style="font-size: 2.5rem;">0</h2>
+        </div>
+    </div>
+</div>
+
+        <div class="col-lg-5">
+            <h5 class="mb-3 fw-bold">📜 DİKEY SINIR İHLAL KAYITLARI</h5>
+            <div id="logs-container">
+                <div class="text-center mt-5 text-muted">Henüz bir ihlal tespit edilmedi...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    // Yoğunluk Tahmini (Basit Mantık: Kişi sayısı 5'ten fazlaysa yüksek yoğunluk)
+    const logsContainer = document.getElementById('logs-container');
+    let lastDataCount = -1;
+
+    function handleCameraError(img) {
+        img.src = 'https://via.placeholder.com/1280x720/1e293b/38bdf8?text=Kamera+Kaynağı+Bekleniyor...';
+        document.getElementById('camera-status').innerText = 'Beklemede';
+        document.getElementById('camera-status').className = 'badge bg-warning text-dark';
+    }
+
+    async function fetchLogs() {
+        try {
+            const response = await fetch('http://127.0.0.1:8000/veriler');
+            const data = await response.json();
+            
+            // Veri sayısı değişmediyse güncelleme yapma
+            if (data.length === lastDataCount) return;
+
+            lastDataCount = data.length;
+            
+            // İstatistikleri Hesapla
+            const personCount = data.filter(item => item.object_type === 'person').length;
+            const objectCount = data.length - personCount;
+
+            // Yoğunluk Durumunu Güncelle
+            const densityStatus = personCount > 5 ? "YÜKSEK (Kuyruk Oluşuyor)" : "DÜŞÜK (Normal Akış)";
+            document.getElementById('status-text').innerText = `CANLI ANALİZ: ${densityStatus}`;
+
+            // Kartları Güncelle
+            document.getElementById('stat-total').innerText = data.length;
+            document.getElementById('stat-person').innerText = personCount;
+            document.getElementById('stat-object').innerText = objectCount;
+
+            // Listeyi Güncelle
+            logsContainer.innerHTML = '';
+            if (data.length === 0) {
+                logsContainer.innerHTML = '<div class="text-center mt-5 text-muted">Henüz bir ihlal tespit edilmedi...</div>';
+            } else {
+                data.forEach(item => {
+                    const date = new Date(item.created_at).toLocaleTimeString('tr-TR');
+                    logsContainer.innerHTML += `
+                        <div class="log-card p-3 d-flex align-items-center" onclick="window.open('http://127.0.0.1:8000/${item.image_path}')">
+                            <img src="http://127.0.0.1:8000/${item.image_path}" class="violation-img me-3">
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <h6 class="text-uppercase fw-bold mb-1" style="color: ${item.object_type === 'person' ? 'var(--warning)' : 'var(--accent)'}">
+                                        🚨 ${item.object_type} Sınır Geçişi
+                                    </h6>
+                                    <span class="badge badge-id">ID: ${item.object_id}</span>
+                                </div>
+                                <div class="timestamp">${date}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        } catch (error) {
+            console.error("API Bağlantı Hatası:", error);
+            document.getElementById('status-text').innerText = "API BAĞLANTISI KESİLDİ";
+        }
+    }
+
+    // 3 saniyede bir kontrol et
+    setInterval(fetchLogs, 3000);
+    // İlk açılışta hemen çalıştır
+    fetchLogs();
+</script>
+
+</body>
+</html>
